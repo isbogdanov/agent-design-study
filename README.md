@@ -171,4 +171,6 @@ Deliberation tools toggled in `core.yaml`:
 
 ## License
 
-See `LICENSE` for terms. The CybORG CAGE-2 environment is subject to its own license; see the CybORG repository for details.
+This artifact is released under the **Apache License 2.0** — see [`LICENSE`](LICENSE) for the full text.
+
+The CybORG CAGE-2 environment is subject to its own license; see the [CybORG repository](https://github.com/cage-challenge/cage-challenge-2) for details.
