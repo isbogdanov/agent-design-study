@@ -1,5 +1,7 @@
 # Context, Reasoning, and Hierarchy — Reproducibility Artifact
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 Artifact for the ACM CAIS 2026 paper:
 
 > **Context, Reasoning, and Hierarchy: A Cost-Performance Study of Compound LLM Agent Design in an Adversarial POMDP**
