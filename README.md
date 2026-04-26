@@ -1,8 +1,8 @@
-# Compound LLM Agent Design Study — Reproducibility Artifact
+# Context, Reasoning, and Hierarchy — Reproducibility Artifact
 
 Artifact for the ACM CAIS 2026 paper:
 
-> **Compound LLM Agent Design in Adversarial POMDPs: A Cost-Performance Study of Context, Deliberation, and Hierarchy**
+> **Context, Reasoning, and Hierarchy: A Cost-Performance Study of Compound LLM Agent Design in an Adversarial POMDP**
 
 This repository contains the full agent implementation, experiment runner, and all YAML configuration snapshots needed to reproduce the three-axis ablation study reported in the paper (72 model–configuration pairs, 3,475 episodes).
 
