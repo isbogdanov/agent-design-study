@@ -1,0 +1,25 @@
+
+# Ignore git history
+.git
+
+# Ignore all log directories
+**/logs/
+**/*.log
+**/*.json
+**/*.csv
+
+# Ignore compiled python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore local virtualenvs
+.venv
+env/
+venv/
+anaconda3/
+
+# Ignore artifacts
+experiments/
+brain/

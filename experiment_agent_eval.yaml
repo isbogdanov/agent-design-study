@@ -1,0 +1,45 @@
+
+experiment_name: "agent_eval_experiment"
+
+num_instances: 10
+max_parallel_workers: 10
+num_evaluation_runs: 5  # Number of evaluation runs per instance
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Definitions source — uncomment ONE block to select the experimental config.
+# Each folder is a complete, self-contained snapshot of agent YAML definitions.
+# Path is relative to the repo root (where run_experiment.py is run from).
+# ─────────────────────────────────────────────────────────────────────────────
+# ── Default (live definitions — same as hist+net anchor) ──────────────────────
+#definitions_source: "agent_base/agents/prompts/definitions"
+
+# ── Axis 1: Context (monolithic planner, no hierarchy) ────────────────────────
+definitions_source: "exp_configs/obs"           # raw CybORG observation only
+# definitions_source: "exp_configs/obs_hist"      # obs + compressed history
+# definitions_source: "exp_configs/obs_hist_net"  # obs + history + network_status
+# definitions_source: "exp_configs/obs_net"       # obs + network_status (no history)
+# definitions_source: "exp_configs/network"       # network_status only
+# definitions_source: "exp_configs/hist_net"      # network_status + history  ← anchor
+
+# ── Axis 2: Deliberation (cumulative, on hist+net anchor, monolithic) ─────────
+# definitions_source: "exp_configs/delib_question"  # +raise_a_question
+# definitions_source: "exp_configs/delib_critique"  # +critique (incl. question)
+# definitions_source: "exp_configs/delib_improve"   # +improve  (incl. question+critique)
+# definitions_source: "exp_configs/delib_cot"       # +COT      (incl. all three tools)
+
+# ── Axis 3: Hierarchy (hist+net context, structured context) ──────────────────
+# definitions_source: "exp_configs/full_hierarchy"  # hier-off: delegation only, no deliberation
+# definitions_source: "exp_configs/hier_on"         # hier-on:  delegation + deliberation on all agents
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent Configuration (passed to run_cyborg_coordinator.py)
+# ─────────────────────────────────────────────────────────────────────────────
+agent_config:
+  steps: 30
+  provider: "openrouter"
+  model: "google/gemini-2.5-flash-lite"
+  #model: "mistralai/devstral-2512"
+  #model: "meta-llama/llama-4-maverick"
+  #model: "qwen/qwen3-235b-a22b-2507"
+  #model: "x-ai/grok-4.1-fast"
+  #model: "google/gemini-3-flash-preview"

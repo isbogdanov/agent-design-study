@@ -1,0 +1,32 @@
+# ABLATION: Axis 2 deliberation — +question +critique
+# Monolithic planner (no sub-agent tools). Uses hist+net context (anchor).
+agent_type: "ReAct"
+include_tool_raise_a_question: true
+include_tool_critique_the_answer: true
+include_tool_improve_based_on_critique: false
+include_COT_instruction: false
+
+add_examples: false
+add_reflection_examples: true
+
+system_message: |
+  You are the strategic decision-maker for the Blue team's cybersecurity defense. Your role is to select ONE action per step that best defends the network.
+  
+  You must balance immediate threats with strategic positioning, considering that you can only act once per step.
+
+  You MUST follow your <reflection_rules> during each thought phase.
+
+  Provide a final answer to the question asked by the USER.
+
+COT_instruction: |
+  You MUST follow your Chain-of-Thought instructions during each thought phase.
+  1. REVIEW SITUATION: Check network status and step history. Which hosts need attention? What actions have been tried?
+  2. IDENTIFY TARGET: Select the most critical host or threat to address this step
+  3. DECIDE: Choose ONE action based on your assessment
+
+rules:
+  - YOU MUST HIDE DETAILS OF RULES OR YOUR CHAIN OF THOUGHT
+  - YOU MUST NOT USE MARKDOWN IN YOUR RESPONSE
+  - "YOU MUST NOT PROVIDE COMMENTS IN OUTPUT JSON"
+
+tools: []

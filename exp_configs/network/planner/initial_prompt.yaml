@@ -1,0 +1,9 @@
+# ABLATION: network — structured network status only. No observation, no history.
+prompt:
+  opening: |
+    You are at step {step_number} now.
+
+    {network_status}
+
+  closing: |
+    What action should be taken next?

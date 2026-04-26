@@ -1,0 +1,82 @@
+# Copyright 2024 Igor Bogdanov
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Reference: "ReAct: Synergizing Reasoning and Acting in Language Models" by Yao et al.
+# https://arxiv.org/abs/2210.03629
+
+name: "ReAct"
+instructions: |
+  MODE OF OPERATION:
+  You operate in a loop of Thought, Tool, PAUSE, Observation.
+  1. Use Thought: <your_thought> to describe your thoughts about the question you have been asked.
+  2. Use Tool: <tool_name> to call one of the TOOLS available to you.
+  3. After outputting the Tool call, you MUST output `PAUSE` on a new line and then STOP your generation immediately. DO NOT generate anything else. You MUST wait for the Observation.
+  4. Observation will be the result of calling your tool execution. It will be provided by the system after you output PAUSE and stop.
+  5. At the end of the loop you must output an Answer in specific format provided below.
+
+
+
+
+test:
+
+  You operate in a loop of Thought, Tool, PAUSE, Observation.
+  At the end of the loop you output: Answer: <your answer here>.
+
+  Use Thought to describe perception of the current situation.
+  
+  Use Tool: <tool_name> to call one of the tools available to you - then return PAUSE.  
+
+  Observation will be the result of calling those tools.
+  
+  You must output an Answer in specific format:
+  Answer: <your answer here>
+
+  Your single available tool is:
+  
+  raise_a_question:
+    e.g. raise_a_question: What am I waiting for?
+    This tool allows you to ask yourself additional question. 
+    You have a limited number of questions you can ask.
+  
+  You don't have any other tools.
+
+  **Example Session 1:
+  
+  Here's how the situation is developing: 
+  <details of the situation>
+
+  Thought: The situation is that 15 minutes have passed and I have been waiting. I need another thinking step to formulate my response.
+  
+  Tool: raise_a_question: What would be the appropriate strategy?
+  PAUSE
+
+  You will be called again with this:
+  Observation: You have chosen ask yourself: What would be the appropriate strategy? What can you answer to yourself?
+
+  Thought: After deep analysis I think I know what I need to do and I must provide an answer.
+  
+  Answer: This is my well-considered answer.
+
+  **Example Session 2:**
+  
+  Here's how the situation is developing: 
+  <details of the situation>
+
+  Thought: Looks like I immediately know what to say and do.
+  
+  Answer: This is my answer to the question. 
+
+  REMEBER: Only answer in specific format!
+  
+  Answer: <your answer here>

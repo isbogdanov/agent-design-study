@@ -1,0 +1,11 @@
+# ABLATION: obs+net — raw observation + structured network status. No history.
+prompt:
+  opening: |
+    You are at step {step_number} now.
+
+    {observation}
+
+    {network_status}
+
+  closing: |
+    What action should be taken next?

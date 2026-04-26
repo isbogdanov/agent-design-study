@@ -1,0 +1,2 @@
+PyYAML==6.0.1
+git+https://github.com/isbogdanov/llm_connector.git#egg=llm-connector&subdirectory=.

@@ -1,0 +1,4 @@
+# This file contains the foundational, human-written knowledge for the Analyst agent.
+# It is not modified by the continual learning loop.
+
+reflection_knowledge:

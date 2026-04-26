@@ -1,0 +1,9 @@
+# ABLATION: obs — raw CybORG observation only. No structured context.
+prompt:
+  opening: |
+    You are at step {step_number} now.
+
+    {observation}
+
+  closing: |
+    What action should be taken next?

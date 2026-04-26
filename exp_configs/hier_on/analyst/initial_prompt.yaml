@@ -1,0 +1,6 @@
+prompt:
+  opening: |
+    You must provide an analysis for the host: {hostname}.
+
+  closing: |
+    What is your understanding of the situation with the host?

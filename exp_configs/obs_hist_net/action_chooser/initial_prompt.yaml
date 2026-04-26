@@ -1,0 +1,12 @@
+prompt: |
+  <SITUATION_JSON>
+  {situational_understanding}
+  </SITUATION_JSON>
+  
+  The JSON above contains:
+  - "target_host": The specific hostname requiring action (CRITICAL: All your suggested actions MUST target this host)
+  - "situation": Description of the current threat or issue
+  - "severity": The threat level (low|medium|high|critical)
+  - "context": Additional relevant information from previous steps
+  
+  Provide THREE action suggestions for the target_host specified in the JSON, ordered from highest confidence to lowest.

@@ -1,0 +1,11 @@
+# ABLATION: obs+hist — raw observation + compressed action history.
+prompt:
+  opening: |
+    You are at step {step_number} now.
+
+    {observation}
+
+    {history}
+
+  closing: |
+    What action should be taken next?

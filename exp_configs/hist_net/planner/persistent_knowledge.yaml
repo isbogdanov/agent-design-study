@@ -1,0 +1,27 @@
+reflection_knowledge:
+  # This content was moved from the original reflection_knowledge.yaml
+  - content:
+    - Description: monitoring network for malicious activity.
+      Example use: Monitor
+      Name: Monitor
+      Type: Passive observing action
+    - Description: it does not remove the host but attempts to remove malicious infection
+        from a host.
+      Example use: Remove hostname=someName
+      Name: Remove
+      Type: Reactive intervention
+    - Description: analyzing a host for malicious activity at deeper system level
+      Example use: Analyse hostname=someName
+      Name: Analyse
+      Type: Passive observing action
+    - Description: restoring a host to a clean state with very high penalty, this action removes all previously deployed decoys from the host
+      Example use: Restore hostname=someName
+      Name: Restore
+      Type: Reactive intervention
+    - Description: deploying a service to act as a decoy to a host to distract the attacker in future steps
+      Example use: DecoySERVICE hostname=someName
+      Name: DecoySERVICE
+      Type: Proactive Protective action
+    header: 'INTERPRETATION OF ACTIONS FROM <AVAILABLE_ACTIONS_LIST>'
+    root: actions
+    type: json

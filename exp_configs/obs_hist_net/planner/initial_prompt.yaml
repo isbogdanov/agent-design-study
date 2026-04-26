@@ -1,0 +1,13 @@
+# ABLATION: obs+hist+net — all three context injections.
+prompt:
+  opening: |
+    You are at step {step_number} now.
+
+    {observation}
+
+    {network_status}
+
+    {history}
+
+  closing: |
+    What action should be taken next?
