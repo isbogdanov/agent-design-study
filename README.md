@@ -3,7 +3,6 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 Artifact for the ACM CAIS 2026 paper:
-
 > **Context, Reasoning, and Hierarchy: A Cost-Performance Study of Compound LLM Agent Design in an Adversarial POMDP**
 
 This repository contains the full agent implementation, experiment runner, and all YAML configuration snapshots needed to reproduce the three-axis ablation study reported in the paper (72 model–configuration pairs, 3,475 episodes).
@@ -30,13 +29,17 @@ All 12 configuration snapshots are pre-built in `exp_configs/`. Switching betwee
 
 ```
 .
-├── agent_base/                        # Agent implementation
+├── agent_base/                        # Agent implementation (mounted into Docker)
+│   ├── run_cyborg_coordinator.py      # Per-instance entry point (runs inside Docker)
 │   ├── agents/
-│   │   └── prompts/
-│   │       └── definitions/           # Live definitions (hist+net anchor)
+│   │   └── prompts/definitions/       # Live definitions (hist+net anchor)
+│   │       ├── planner/               # core.yaml, initial_prompt.yaml, persistent_knowledge.yaml
+│   │       ├── analyst/
+│   │       └── action_chooser/
 │   ├── coordinators/                  # CybORG coordinator and agent coordinator
-│   ├── utils/                         # Settings, logging utilities
-│   └── run_cyborg_coordinator.py      # Entry point (runs inside Docker)
+│   ├── llm-connector/                 # LLM provider abstraction
+│   │   └── conf/                      # llm.yaml, logs.yaml, security.yaml
+│   └── utils/                         # Settings, logging utilities
 ├── exp_configs/                       # All 12 paper ablation snapshots
 │   ├── obs/                           # Axis 1: raw observation only
 │   ├── obs_hist/                      # Axis 1: obs + history
@@ -49,11 +52,14 @@ All 12 configuration snapshots are pre-built in `exp_configs/`. Switching betwee
 │   ├── delib_improve/                 # Axis 2: +question +critique +improve
 │   ├── delib_cot/                     # Axis 2: all tools + COT instruction
 │   ├── full_hierarchy/                # Axis 3: hier-off (delegation, no deliberation)
-│   └── hier_on/                       # Axis 3: hier-on (delegation + deliberation)
+│   └── hier_on/                       # Axis 3: hier-on (delegation + deliberation on all agents)
 ├── experiment_agent_eval.yaml         # Experiment configuration (edit here)
 ├── run_experiment.py                  # Experiment runner (parallelises Docker instances)
 ├── Dockerfile                         # Container with CybORG + agent dependencies
-└── .env                               # API keys (not committed — fill in before running)
+├── container_requirements.txt         # Python dependencies (used by Docker)
+├── .env.template                      # API key template — copy to .env
+├── .gitignore
+└── LICENSE
 ```
 
 ---
@@ -61,14 +67,20 @@ All 12 configuration snapshots are pre-built in `exp_configs/`. Switching betwee
 ## Prerequisites
 
 - **Docker** — the agent and CybORG run entirely inside the container.
-- **Python 3.9+** — only for `run_experiment.py` (the outer orchestrator); no extra packages beyond the standard library and `pyyaml`.
-- **API keys** — add your LLM provider keys to `.env` (see `.env` template below).
+- **Python 3.9+** — only for `run_experiment.py` (the outer orchestrator); no packages beyond the standard library and `pyyaml`.
+- **API keys** — at least one LLM provider key in `.env`.
 
-### `.env` template
+### `.env` setup
 
 ```bash
-OPENROUTER_API_KEY=your_key_here
-GOOGLE_API_KEY=your_key_here        # for Gemini models
+cp .env.template .env
+```
+
+Open `.env` and fill in your key(s):
+
+```bash
+OPENROUTER_API_KEY=sk-or-v1-...   # recommended — single key, access to all models
+GOOGLE_API_KEY=AIza...             # for direct Google AI Studio access
 ```
 
 ---
@@ -81,14 +93,14 @@ GOOGLE_API_KEY=your_key_here        # for Gemini models
 docker build -t cyborg-agent .
 ```
 
+Installs all Python dependencies and patches the CybORG CAGE-2 data files. Takes ~3–5 minutes on first build; subsequent builds are cached.
+
 ### 2. Configure the experiment
 
-Open `experiment_agent_eval.yaml` and:
-1. Uncomment the `definitions_source` line for the config you want to run.
-2. Set the model under `agent_config`.
+Open `experiment_agent_eval.yaml` and uncomment the `definitions_source` for the config you want to run:
 
 ```yaml
-# To reproduce the best-performing configuration (hier-off, Gemini-2.5-Flash-Lite):
+# To reproduce the best-performing configuration (hier-off):
 definitions_source: "exp_configs/full_hierarchy"
 
 agent_config:
@@ -103,9 +115,60 @@ agent_config:
 python3 run_experiment.py --config experiment_agent_eval.yaml
 ```
 
-Results are written to `experiments/<experiment_name>_<timestamp>/aggregated_logs/`:
-- `evaluation_report.md` — per-instance reward table
-- `summary.md` — aggregate statistics
+---
+
+## Expected Output
+
+Results are written to `experiments/<experiment_name>_<timestamp>/aggregated_logs/`.
+
+### `evaluation_report.md` (per-instance reward table)
+
+```markdown
+# Evaluation Report
+
+## Summary Statistics
+- Total Evaluation Runs: 50
+- Average Reward: -24.0
+- Min Reward: -71.2
+- Max Reward: -3.1
+
+## Per-Instance Evaluation Rewards
+
+| Instance    | Run 1  | Run 2  | Run 3  | Run 4  | Run 5  | Avg    |
+|-------------|--------|--------|--------|--------|--------|--------|
+| instance_1  | -18.3  | -22.1  | -19.5  | -31.2  | -28.0  | -23.8  |
+| instance_2  | -20.1  | -25.4  | -17.8  | -24.9  | -26.2  | -22.9  |
+| ...         |        |        |        |        |        |        |
+```
+
+### `summary.md` (aggregate statistics)
+
+```markdown
+# Experiment Summary
+
+## Overview
+- Total Instances: 10
+- Average Reward (all runs): -24.0
+
+## Detailed Results
+| Instance   | Eval Runs | Rewards            | Avg Reward |
+|------------|-----------|--------------------|------------|
+| instance_1 | 5         | -18.3, -22.1, ...  | -23.8      |
+| instance_2 | 5         | -20.1, -25.4, ...  | -22.9      |
+```
+
+### Sanity-check values
+
+Expected mean episode return from Table 2 of the paper (Gemini-2.5-Flash-Lite):
+
+| Config | Expected mean return |
+|---|---|
+| `obs` (raw observation only) | ~ −215 |
+| `hist+net` (anchor) | ~ −209 |
+| `hier-off` *(best config)* | ~ −183 |
+| `hier-on` | ~ −186 |
+
+> Returns are ≤ 0; closer to zero is better. Values vary by model — the table above is for Gemini-2.5-Flash-Lite specifically. See Table 2 of the paper for all six models.
 
 ---
 
@@ -142,6 +205,52 @@ All models use deterministic decoding (`temperature: 0` or provider minimum). No
 
 ---
 
+## Output Structure
+
+```
+experiments/<experiment_name>_<timestamp>/
+├── experiment_config.yaml                  # Copy of the config used for this run
+└── aggregated_logs/
+    ├── evaluation_report.md                # Per-instance reward table
+    ├── summary.md                          # Aggregate statistics
+    └── instance_1/
+        └── runs/evaluating/
+            └── run_<timestamp>/
+                ├── <timestamp>_console_mirror.log   # Full agent transcript
+                └── connector/                       # LLM token usage logs
+```
+
+---
+
+## Providers
+
+API keys are read from `.env`. The `provider` value in the YAML determines which key is used:
+
+| `provider` | Env var | Notes |
+|---|---|---|
+| `openrouter` | `OPENROUTER_API_KEY` | Recommended — single key, all models |
+| `google` | `GOOGLE_API_KEY` | Google AI Studio direct |
+| `vertex` | `VERTEX_API_KEY` | Google Vertex AI |
+
+### Switching models
+
+```yaml
+# Via OpenRouter (single key, all supported models):
+provider: "openrouter"
+model: "google/gemini-2.5-flash-lite"   # G2.5FL (paper default)
+model: "x-ai/grok-4.1-fast"             # Grok
+model: "meta-llama/llama-4-maverick"    # Llama
+model: "qwen/qwen3-235b-a22b-2507"      # Qwen
+model: "mistralai/devstral-2512"        # Devstral
+model: "google/gemini-3-flash-preview"  # G3FP
+
+# Direct Google AI Studio:
+provider: "google"
+model: "gemini-2.5-flash-lite"
+```
+
+---
+
 ## Architecture
 
 The key architectural invariant is the **engine–personality separation**: a shared ReAct execution engine (`run_cyborg_coordinator.py`) is paired with declarative YAML "personalities" in `definitions/`. Every experimental variant is a configuration change, not a code change.
@@ -170,6 +279,12 @@ Deliberation tools toggled in `core.yaml`:
 | `include_tool_critique_the_answer` | Agent critiques its response |
 | `include_tool_improve_based_on_critique` | Agent revises in light of critique |
 | `include_COT_instruction` | Injects explicit chain-of-thought instruction |
+
+---
+
+## Environment: CybORG CAGE-2
+
+Evaluated on [CybORG CAGE-2](https://github.com/cage-challenge/cage-challenge-2) — a simulated network-defense environment (13-host enterprise network, 30-step horizon, automated B-line red attacker). The Dockerfile automatically installs and patches the necessary data files.
 
 ---
 
