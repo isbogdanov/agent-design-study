@@ -138,6 +138,8 @@ num_evaluation_runs: 5
 
 All models use deterministic decoding (`temperature: 0` or provider minimum). No per-model tuning is performed.
 
+> **Data availability.** The complete episode logs for all 3,475 episodes (raw console logs, token counts, per-step reward traces) are not included in this repository due to size. They are available upon request from the authors.
+
 ---
 
 ## Architecture
