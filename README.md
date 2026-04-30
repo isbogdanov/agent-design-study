@@ -206,7 +206,7 @@ num_evaluation_runs: 5
 
 All models use deterministic decoding (`temperature: 0` or provider minimum). No per-model tuning is performed.
 
-> **Data availability.** The complete episode logs collected for the paper (raw console logs, token usage, per-step reward traces, and evolved memory artifacts across all experiments and evaluated episodes) are not included in this repository due to size. They may be available upon request from the authors.
+> **Data availability.** The complete episode logs collected for the paper (raw console logs, token usage, per-step reward traces across all experiments and evaluated episodes) are not included in this repository due to size. They may be available upon request from the authors.
 
 ---
 
