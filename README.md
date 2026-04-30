@@ -7,6 +7,11 @@ Artifact for the ACM CAIS 2026 paper:
 
 This repository contains the full agent implementation, experiment runner, and all YAML configuration snapshots needed to reproduce the three-axis ablation study reported in the paper (72 model–configuration pairs, 3,475 episodes).
 
+## Archived Artifact
+
+Archived artifact: https://doi.org/10.5281/zenodo.19908100  
+Development repository: https://github.com/isbogdanov/agent-design-study
+
 ---
 
 ## Overview
@@ -19,7 +24,7 @@ Three design axes are studied:
 |---|---|---|
 | 1 | **Context** — what the agent sees | 6 variants (`obs`, `obs+hist`, `obs+hist+net`, `obs+net`, `network`, `hist+net`) |
 | 2 | **Deliberation** — reasoning depth (cumulative) | 4 levels (`+question`, `+critique`, `+improve`, `+COT`) |
-| 3 | **Hierarchy** — task decomposition | 2 configs (`hier-off`, `hier-on`) |
+| 3 | **Hierarchy** — task decomposition | 2 configs (`hier-base`, `hier-delib`) |
 
 All 12 configuration snapshots are pre-built in `exp_configs/`. Switching between them requires changing one line in `experiment_agent_eval.yaml`.
 
@@ -51,8 +56,8 @@ All 12 configuration snapshots are pre-built in `exp_configs/`. Switching betwee
 │   ├── delib_critique/                # Axis 2: +question +critique
 │   ├── delib_improve/                 # Axis 2: +question +critique +improve
 │   ├── delib_cot/                     # Axis 2: all tools + COT instruction
-│   ├── full_hierarchy/                # Axis 3: hier-off (delegation, no deliberation)
-│   └── hier_on/                       # Axis 3: hier-on (delegation + deliberation on all agents)
+│   ├── full_hierarchy/                # Axis 3: hier-base (delegation, no deliberation)
+│   └── hier_on/                       # Axis 3: hier-delib (delegation + deliberation on all agents)
 ├── experiment_agent_eval.yaml         # Experiment configuration (edit here)
 ├── run_experiment.py                  # Experiment runner (parallelises Docker instances)
 ├── Dockerfile                         # Container with CybORG + agent dependencies
@@ -100,7 +105,7 @@ Installs all Python dependencies and patches the CybORG CAGE-2 data files. Takes
 Open `experiment_agent_eval.yaml` and uncomment the `definitions_source` for the config you want to run:
 
 ```yaml
-# To reproduce the best-performing configuration (hier-off):
+# To reproduce the best-performing configuration (hier-base):
 definitions_source: "exp_configs/full_hierarchy"
 
 agent_config:
@@ -159,22 +164,22 @@ Results are written to `experiments/<experiment_name>_<timestamp>/aggregated_log
 
 ### Sanity-check values
 
-Expected mean episode return from Table 2 of the paper (Gemini-2.5-Flash-Lite):
+Expected mean episode return from Table 3 of the paper (Gemini-2.5-Flash-Lite):
 
 | Config | Expected mean return |
 |---|---|
 | `obs` (raw observation only) | ~ −215 |
 | `hist+net` (anchor) | ~ −209 |
-| `hier-off` *(best config)* | ~ −183 |
-| `hier-on` | ~ −186 |
+| `hier-base` *(best config)* | ~ −183 |
+| `hier-delib` | ~ −186 |
 
-> Returns are ≤ 0; closer to zero is better. Values vary by model — the table above is for Gemini-2.5-Flash-Lite specifically. See Table 2 of the paper for all six models.
+> Returns are ≤ 0; closer to zero is better. Values vary by model — the table above is for Gemini-2.5-Flash-Lite specifically. See Table 3 of the paper for all six models.
 
 ---
 
 ## Reproducing Paper Results
 
-Each row in Table 2 of the paper corresponds to one `exp_configs/` folder.
+Each row in Table 3 of the paper corresponds to one `exp_configs/` folder.
 
 | Paper config | `definitions_source` |
 |---|---|
@@ -188,8 +193,8 @@ Each row in Table 2 of the paper corresponds to one `exp_configs/` folder.
 | `+critique` | `exp_configs/delib_critique` |
 | `+improve` | `exp_configs/delib_improve` |
 | `+COT` | `exp_configs/delib_cot` |
-| `hier-off` | `exp_configs/full_hierarchy` |
-| `hier-on` | `exp_configs/hier_on` |
+| `hier-base` | `exp_configs/full_hierarchy` |
+| `hier-delib` | `exp_configs/hier_on` |
 
 The paper uses **10 instances × 5 runs = 50 episodes per config per model**. Set in `experiment_agent_eval.yaml`:
 
@@ -201,7 +206,7 @@ num_evaluation_runs: 5
 
 All models use deterministic decoding (`temperature: 0` or provider minimum). No per-model tuning is performed.
 
-> **Data availability.** The complete episode logs for all 3,475 episodes (raw console logs, token counts, per-step reward traces) are not included in this repository due to size. They are available upon request from the authors.
+> **Data availability.** The complete episode logs collected for the paper (raw console logs, token usage, per-step reward traces, and evolved memory artifacts across all experiments and evaluated episodes) are not included in this repository due to size. They may be available upon request from the authors.
 
 ---
 
