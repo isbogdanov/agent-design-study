@@ -12,10 +12,290 @@ from datetime import datetime
 from glob import glob
 import re
 import sys
+import threading
+import atexit
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("ExperimentRunner")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Optional rich import — used only when --progress flag is active
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from rich.live import Live as _RichLive
+    from rich.table import Table as _RichTable
+    from rich.console import Console as _RichConsole
+    from rich import box as _rich_box
+    _RICH = True
+except ImportError:
+    _RICH = False
+
+
+class ProgressMonitor:
+    """
+    Monitors running Docker evaluation instances by incrementally reading their
+    docker.log files.  Activated ONLY when --progress CLI flag is passed.
+
+    Parses three signals from docker.log:
+      MAIN_LOOP| Episode=1 | Step=S  →  current step within the active run
+      --- EVALUATION RUN N ---       →  run number boundary (count + 1 = current run)
+      Total Cumulative Reward: X     →  reward of the just-completed episode
+
+    Uses an incremental file-cursor (like tail -f) so no lines are missed
+    even when a single step produces tens of KB of LLM output.
+    """
+
+    _MAINLOOP_PAT = re.compile(
+        r'MAIN_LOOP\| Episode=\d+ \| Step=(\d+).*?\| Reward=([\-\d\.]+) \| TotalReward=([\-\d\.]+)'
+    )
+    _EVALRUN_PAT  = re.compile(r'--- EVALUATION RUN (\d+) ---')
+    _REWARD_PAT   = re.compile(r'Total Cumulative Reward:\s+([\-\d\.]+)')
+
+    def __init__(self, workspaces_dir, num_instances, num_eval_runs, total_steps=30):
+        self.workspaces_dir = workspaces_dir
+        self.num_instances  = num_instances
+        self.num_eval_runs  = num_eval_runs
+        self.total_steps    = total_steps
+        self._global_start  = time.time()
+        self._stop          = threading.Event()
+        self._thread        = None
+        self._live          = None
+
+        # Per-instance mutable state
+        self._state = {
+            i: {
+                'run': 1, 'step': 0,
+                'step_reward': None, 'total_reward': None,
+                'episode_completed': False,  # True once 'Total Cumulative Reward:' seen
+                'rewards': [], 'start': time.time()
+            }
+            for i in range(1, num_instances + 1)
+        }
+        # Incremental read cursor: bytes already consumed per instance docker.log
+        self._pos = {i: 0 for i in range(1, num_instances + 1)}
+
+    # ── public API ────────────────────────────────────────────────────────────
+
+    def start(self):
+        # Log before starting the live display so the message isn't interleaved
+        # with rich's rendering and causes a doubled-title artifact.
+        logger.info("Progress monitor started (polling every 2 s).")
+        if _RICH:
+            self._live = _RichLive(
+                self._make_table(),
+                console=_RichConsole(),
+                refresh_per_second=1,
+                transient=False,
+            )
+            self._live.start()
+            # Ensure the live display is closed cleanly even on sys.exit(1)
+            # (the SIGINT handler calls sys.exit directly, bypassing KeyboardInterrupt)
+            atexit.register(self._close_live)
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _close_live(self):
+        """Idempotent: close the rich.Live display. Called via atexit on sys.exit.
+
+        Stops the background thread first to eliminate the race between the
+        thread's _live.update() call and our _live.stop() call here.
+        """
+        # Signal the loop thread to exit and wait briefly
+        self._stop.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        if self._live is not None:
+            try:
+                self._live.stop()
+            except Exception:
+                pass
+            self._live = None
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+        # Final poll: capture any log lines written after the last background poll
+        # (the last episode's MAIN_LOOP may land after the thread's final iteration)
+        self._poll()
+        if self._live:
+            self._live.update(self._make_table())  # final refresh
+        self._close_live()
+
+    # ── internals ─────────────────────────────────────────────────────────────
+
+    def _docker_log_path(self, instance_id):
+        return os.path.join(
+            self.workspaces_dir, f"instance_{instance_id}", "docker.log"
+        )
+
+    def _poll(self):
+        """Read only newly appended bytes from each docker.log and update state."""
+        for i in range(1, self.num_instances + 1):
+            path = self._docker_log_path(i)
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, 'r', errors='ignore') as f:
+                    f.seek(self._pos[i])
+                    new_text = f.read()
+                    self._pos[i] = f.tell()
+                if not new_text:
+                    continue
+
+                # Run-number boundary: each separator marks start of run N
+                run_matches = self._EVALRUN_PAT.findall(new_text)
+                if run_matches:
+                    # Archive running total only if the episode-end summary wasn't seen
+                    # (avoids double-counting alongside the _REWARD_PAT branch below)
+                    if not self._state[i]['episode_completed'] and self._state[i]['total_reward'] is not None:
+                        self._state[i]['rewards'].append(self._state[i]['total_reward'])
+                    self._state[i]['run'] = int(run_matches[-1])
+                    self._state[i]['step'] = 0
+                    self._state[i]['step_reward'] = None
+                    self._state[i]['total_reward'] = None   # blank only on new-run start
+                    self._state[i]['episode_completed'] = False
+
+                # Current step + per-step reward + running TotalReward
+                step_matches = self._MAINLOOP_PAT.findall(new_text)
+                if step_matches:
+                    last_step, last_step_rew, last_total = step_matches[-1]
+                    self._state[i]['step']              = int(last_step)
+                    self._state[i]['step_reward']       = float(last_step_rew)
+                    self._state[i]['total_reward']      = float(last_total)
+                    self._state[i]['episode_completed'] = False
+
+                # Episode-end summary line — archive reward, keep total_reward visible
+                for r in self._REWARD_PAT.findall(new_text):
+                    self._state[i]['rewards'].append(float(r))
+                    self._state[i]['step_reward']       = None   # per-step no longer meaningful
+                    self._state[i]['episode_completed'] = True
+                    # total_reward intentionally NOT cleared: keeps the final episode
+                    # total visible in the dashboard until the next run's MAIN_LOOP fires
+
+            except Exception:
+                pass
+
+    def _elapsed(self, since):
+        secs = int(time.time() - since)
+        m, s = divmod(secs, 60)
+        h, m = divmod(m, 60)
+        return f"{h}h {m:02d}m {s:02d}s" if h else f"{m:02d}m {s:02d}s"
+
+    def _bar(self, current, total, width=20):
+        if total <= 0:
+            return '[' + '░' * width + ']'
+        filled = min(width, int(width * current / total))
+        return '[' + '█' * filled + '░' * (width - filled) + ']'
+
+    def _make_table(self):
+        """Build a rich Table representing current per-instance state."""
+        t = _RichTable(
+            title=f"Experiment Progress  ·  {self._elapsed(self._global_start)} elapsed",
+            box=_rich_box.ROUNDED,
+            show_header=True,
+            header_style="bold cyan",
+            border_style="bright_black",
+        )
+        t.add_column("Instance",     style="bold white", justify="center", min_width=10)
+        t.add_column("Run",                              justify="center", min_width=8)
+        t.add_column("Step Progress",                    justify="left",   min_width=32)
+        t.add_column("Elapsed",                          justify="right",  min_width=10)
+        t.add_column("Step Rew / Total",                 justify="right",  min_width=16)
+
+        for i in range(1, self.num_instances + 1):
+            s = self._state[i]
+            run_str  = f"{s['run']}/{self.num_eval_runs}"
+            bar_str  = self._bar(s['step'], self.total_steps)
+            done     = s['step']
+            active   = min(done + 1, self.total_steps)
+            if done == 0:
+                step_str = f"{bar_str}  [dim]—[/dim]  [bold cyan]▶ {active}/{self.total_steps}[/bold cyan]"
+            elif done == self.total_steps:
+                step_str = f"{bar_str}  [green]✓ {done}/{self.total_steps}[/green]"
+            else:
+                step_str = f"{bar_str}  [dim]{done}✓[/dim]  [bold cyan]▶ {active}/{self.total_steps}[/bold cyan]"
+            elapsed  = self._elapsed(s['start'])
+
+            sr = s['step_reward']
+            tr = s['total_reward']
+            if tr is not None:
+                color = ("green"       if tr > -50  else
+                         "yellow"      if tr > -100 else
+                         "dark_orange" if tr > -150 else
+                         "red")
+                sr_str = f"{sr:.1f}" if sr is not None else "—"
+                reward_str = f"[dim]{sr_str}[/dim] / [{color}]{tr:.1f}[/{color}]"
+            else:
+                reward_str = "[dim]— / —[/dim]"
+
+            t.add_row(f"[bold]#{i}[/bold]", run_str, step_str, elapsed, reward_str)
+
+        return t
+
+    def _log_snapshot(self):
+        """Plain-text fallback: emit a progress snapshot via logger.info."""
+        lines = [f"Progress ({self._elapsed(self._global_start)} elapsed):"]
+        for i in range(1, self.num_instances + 1):
+            s = self._state[i]
+            done  = s['step']
+            active = min(done + 1, self.total_steps)
+            if done == 0:
+                step_lbl = f"▶ {active}/{self.total_steps}"
+            elif done == self.total_steps:
+                step_lbl = f"✓ {done}/{self.total_steps}"
+            else:
+                step_lbl = f"{done}✓ ▶ {active}/{self.total_steps}"
+            sr = s['step_reward']
+            tr = s['total_reward']
+            sr_str = f"{sr:.1f}" if sr is not None else "—"
+            tr_str = f"{tr:.1f}" if tr is not None else "—"
+            lines.append(
+                f"  instance_{i} | Run {s['run']}/{self.num_eval_runs} | "
+                f"{bar} {step_lbl} | "
+                f"Elapsed {self._elapsed(s['start'])} | Step {sr_str} / Total {tr_str}"
+            )
+        logger.info("\n".join(lines))
+
+    def _loop(self):
+        _snapshot_interval = 10  # seconds between plain-text snapshots (no-rich mode)
+        _last_snapshot = time.time()
+        while not self._stop.is_set():
+            self._poll()
+            if self._live:
+                self._live.update(self._make_table())
+            else:
+                now = time.time()
+                if now - _last_snapshot >= _snapshot_interval:
+                    self._log_snapshot()
+                    _last_snapshot = now
+            self._stop.wait(2.0)
+
+
+def _worker_suppress_logging():
+    """ProcessPoolExecutor initializer: remove console handlers from the root logger.
+
+    Worker processes inherit the parent's stdout file descriptor.  When --progress
+    is active, rich.Live owns that terminal and tracks the cursor.  Any writes from
+    worker-process logger.info() calls land *outside* rich's knowledge and shift the
+    cursor, causing duplicate table renders.  Workers write all real output to
+    docker.log via subprocess stdout redirect, so removing the StreamHandler here
+    loses nothing visible to the user.
+
+    Must be a module-level function (not a lambda/closure) to be picklable by the
+    'spawn' multiprocessing start method used on macOS.
+    """
+    root = logging.getLogger()
+    root.handlers = [h for h in root.handlers
+                     if not isinstance(h, logging.StreamHandler)]
+
+
+# Module-level reference to the active ProgressMonitor.
+# Set in run_regular_experiment() when --progress is active so the signal
+# handler can stop it (restoring the terminal) before logging any messages.
+_active_monitor = None
+
 
 # Function to load .env file manually to avoid external dependencies
 def load_env_file(filepath=".env"):
@@ -1114,6 +1394,10 @@ def main():
     parser.add_argument("--rebuild", action="store_true", help="Rebuild the Docker image before running")
     parser.add_argument("--report-only", action="store_true", help="Only generate report from existing data")
     parser.add_argument("--report-path", type=str, help="Path to aggregated_logs directory (requires --report-only)")
+    parser.add_argument("--progress", action="store_true",
+                        help="Show a live per-instance progress dashboard. "
+                             "Reads docker.log for each instance. Requires 'rich' for in-place display; "
+                             "falls back to periodic logger output otherwise.")
     args = parser.parse_args()
 
     # Load environment variables from .env
@@ -1180,14 +1464,41 @@ def run_regular_experiment(config, args):
 
     # 5. Run in parallel
     max_workers = config.get('max_parallel_workers', 2)
+    total_steps = config.get('agent_config', {}).get('steps', 30)
     logger.info(f"Launching {num_instances} instance(s) with up to {max_workers} workers...")
 
+    # Optional live progress dashboard (--progress flag only)
+    monitor = None
+    if getattr(args, 'progress', False):
+        monitor = ProgressMonitor(
+            workspaces_dir=workspaces_dir,
+            num_instances=num_instances,
+            num_eval_runs=num_evals,
+            total_steps=total_steps,
+        )
+        monitor.start()
+        # Expose to signal handler so Ctrl+C can restore the terminal cleanly
+        global _active_monitor
+        _active_monitor = monitor
+
     try:
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ProcessPoolExecutor(
+            max_workers=max_workers,
+            # When --progress is active, suppress the worker-process console logger.
+            # Workers write all output to docker.log via subprocess stdout redirect.
+            # Without this, their logger.info() calls write to inherited stdout and
+            # break rich.Live's cursor tracking (causing duplicate table renders).
+            initializer=_worker_suppress_logging if monitor else None,
+        ) as executor:
             results = list(executor.map(run_instance, tasks))
     except KeyboardInterrupt:
+        if monitor:
+            monitor.stop()
         logger.warning("Interrupted. Cleanup handled by signal handler.")
         return
+
+    if monitor:
+        monitor.stop()
 
     # 6. Consolidate & Report
     consolidate_logs(workspaces_dir, aggregated_dir)
@@ -1424,6 +1735,17 @@ def run_incremental_experiment(config, args):
 def setup_signal_handler(timestamp):
     """Sets up signal handler for graceful shutdown."""
     def cleanup_handler(signum, frame):
+        # Stop the progress monitor FIRST so rich.Live releases the terminal
+        # before we write any output.  Without this, the cleanup messages are
+        # swallowed by the live display and the table doubles on exit.
+        global _active_monitor
+        if _active_monitor is not None:
+            try:
+                _active_monitor.stop()
+            except Exception:
+                pass
+            _active_monitor = None
+
         logger.warning("\n\n!!! RECEIVED SIGNAL TO STOP. CLEANING UP... !!!")
         container_pattern = f"cyborg_worker_{timestamp}_"
         try:
@@ -1436,7 +1758,7 @@ def setup_signal_handler(timestamp):
         except Exception as e:
             logger.error(f"Cleanup error: {e}")
         sys.exit(1)
-    
+
     signal.signal(signal.SIGINT, cleanup_handler)
     logger.info("Signal handler registered. Use Ctrl+C to stop.")
 

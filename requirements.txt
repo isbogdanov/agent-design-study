@@ -1,0 +1,6 @@
+# Core dependency (orchestrator)
+PyYAML>=6.0
+
+# Optional: live progress dashboard (--progress flag)
+# Falls back to periodic logger output if not installed.
+rich>=13.0

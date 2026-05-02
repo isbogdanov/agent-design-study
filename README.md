@@ -72,7 +72,7 @@ All 12 configuration snapshots are pre-built in `exp_configs/`. Switching betwee
 ## Prerequisites
 
 - **Docker** — the agent and CybORG run entirely inside the container.
-- **Python 3.9+** — only for `run_experiment.py` (the outer orchestrator); no packages beyond the standard library and `pyyaml`.
+- **Python 3.9+** — only for `run_experiment.py` (the outer orchestrator); standard library + `pyyaml` required, `rich` optional (see [Live progress dashboard](#live-progress-dashboard) below).
 - **API keys** — at least one LLM provider key in `.env`.
 
 ### `.env` setup
@@ -119,6 +119,37 @@ agent_config:
 ```bash
 python3 run_experiment.py --config experiment_agent_eval.yaml
 ```
+
+### Live progress dashboard
+
+Add `--progress` to display a live per-instance table that updates every 2 seconds while containers run:
+
+```bash
+python3 run_experiment.py --config experiment_agent_eval.yaml --progress
+```
+
+Requires the `rich` library (install once: `pip install rich`, or `pip install -r requirements.txt`).
+
+**What is displayed:**
+
+```
+╭────────────┬──────────┬─────────────────────────────────────────┬────────────┬──────────────────╮
+│  Instance  │   Run    │ Step Progress                           │    Elapsed │ Step Rew / Total │
+├────────────┼──────────┼─────────────────────────────────────────┼────────────┼──────────────────┤
+│     #1     │   2/5    │ [████████░░░░░░░░░░░░]  8✓  ▶  9/30    │    04m 21s │     -1.0 / -14.5 │
+│     #2     │   1/5    │ [░░░░░░░░░░░░░░░░░░░░]   —  ▶  1/30    │    04m 18s │         — / —    │
+│     #3     │   3/5    │ [████████████████████]  ✓ 30/30         │    04m 23s │         — / -4.3 │
+╰────────────┴──────────┴─────────────────────────────────────────┴────────────┴──────────────────╯
+```
+
+| Column | Meaning |
+|---|---|
+| **Run** | Current evaluation run out of total (`2/5`) |
+| **Step Progress** | Bar = completed steps; `8✓` = last finished step; `▶ 9/30` = step actively executing |
+| **Step Rew / Total** | Per-step reward from last completed step / cumulative episode total so far |
+| **Total Reward colour** | 🟢 green `> −50`, 🟡 yellow `> −100`, 🟠 orange `> −150`, 🔴 red `≤ −150` |
+
+Without `--progress` the script behaves exactly as before (no change to output or behaviour).
 
 ---
 
